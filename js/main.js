@@ -8,6 +8,6 @@ if (!gl) {
 
 gl.viewport(0, 0, canvas.width, canvas.height);
 
-gl.clearColor(0.0, 0.0, 0.0, 1.0);
+gl.clearColor(0.0, 0.2, 0.5, 1.0);
 
 gl.clear(gl.COLOR_BUFFER_BIT);
