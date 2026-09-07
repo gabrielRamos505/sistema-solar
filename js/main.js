@@ -1,5 +1,5 @@
 // ------------------------------------------------------------
-// PASO 2 - PRIMER TRIÁNGULO CON WEBGL2
+// PASO 3 - TRANSFORMACIONES MATRICIALES 2D
 // ------------------------------------------------------------
 
 const canvas = document.getElementById("glCanvas");
@@ -15,42 +15,48 @@ if (!gl) {
 
 gl.viewport(0, 0, canvas.width, canvas.height);
 gl.clearColor(0.0, 0.0, 0.0, 1.0);
-gl.clear(gl.COLOR_BUFFER_BIT);
 
 // ------------------------------------------------------------
-// 2. Definir los tres vértices del triángulo
-//    Coordenadas NDC: valores entre -1 y 1
+// 2. Geometría original del triángulo
+//    IMPORTANTE: estos vértices ya no se modificarán para mover,
+//    rotar o escalar el objeto.
 // ------------------------------------------------------------
 
 const vertices = new Float32Array([
-    0.0, 0.7,   // vértice superior
-    -0.7, -0.7,   // vértice inferior izquierdo
-    0.7, -0.7    // vértice inferior derecho
+    0.0, 0.35,
+    -0.35, -0.35,
+    0.35, -0.35
 ]);
-
-// ------------------------------------------------------------
-// 3. Crear y llenar el buffer de vértices
-// ------------------------------------------------------------
 
 const vertexBuffer = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
 gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
 
 // ------------------------------------------------------------
-// 4. Código del Vertex Shader
+// 3. Vertex Shader
+//    Recibe una matriz 3x3 llamada uModelMatrix.
 // ------------------------------------------------------------
 
 const vertexShaderSource = `#version 300 es
 
 in vec2 aPosition;
 
+uniform mat3 uModelMatrix;
+
 void main() {
-    gl_Position = vec4(aPosition, 0.0, 1.0);
+    vec3 posicionLocal = vec3(aPosition, 1.0);
+    vec3 posicionTransformada = uModelMatrix * posicionLocal;
+
+    gl_Position = vec4(
+        posicionTransformada.xy,
+        0.0,
+        1.0
+    );
 }
 `;
 
 // ------------------------------------------------------------
-// 5. Código del Fragment Shader
+// 4. Fragment Shader
 // ------------------------------------------------------------
 
 const fragmentShaderSource = `#version 300 es
@@ -65,7 +71,7 @@ void main() {
 `;
 
 // ------------------------------------------------------------
-// 6. Función para compilar un shader
+// 5. Compilar shaders
 // ------------------------------------------------------------
 
 function crearShader(gl, tipo, codigoFuente) {
@@ -96,7 +102,7 @@ const fragmentShader = crearShader(
 );
 
 // ------------------------------------------------------------
-// 7. Crear y enlazar el programa WebGL
+// 6. Crear programa WebGL
 // ------------------------------------------------------------
 
 const program = gl.createProgram();
@@ -112,7 +118,7 @@ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
 }
 
 // ------------------------------------------------------------
-// 8. Configurar el atributo aPosition mediante un VAO
+// 7. Configurar atributo aPosition mediante VAO
 // ------------------------------------------------------------
 
 const vao = gl.createVertexArray();
@@ -125,19 +131,128 @@ const positionLocation = gl.getAttribLocation(program, "aPosition");
 gl.enableVertexAttribArray(positionLocation);
 
 gl.vertexAttribPointer(
-    positionLocation, // ubicación del atributo
-    2,                // dos componentes: x, y
-    gl.FLOAT,         // tipo de dato
-    false,            // sin normalización
-    0,                // stride
-    0                 // offset
+    positionLocation,
+    2,
+    gl.FLOAT,
+    false,
+    0,
+    0
 );
 
 // ------------------------------------------------------------
-// 9. Dibujar
+// 8. Funciones matemáticas: matrices 3x3
+//    WebGL utiliza los datos en orden de columnas.
+// ------------------------------------------------------------
+
+function matrizIdentidad() {
+    return new Float32Array([
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1
+    ]);
+}
+
+function matrizTraslacion(tx, ty) {
+    return new Float32Array([
+        1, 0, 0,
+        0, 1, 0,
+        tx, ty, 1
+    ]);
+}
+
+function matrizRotacion(anguloRadianes) {
+    const c = Math.cos(anguloRadianes);
+    const s = Math.sin(anguloRadianes);
+
+    return new Float32Array([
+        c, s, 0,
+        -s, c, 0,
+        0, 0, 1
+    ]);
+}
+
+function matrizEscala(sx, sy) {
+    return new Float32Array([
+        sx, 0, 0,
+        0, sy, 0,
+        0, 0, 1
+    ]);
+}
+
+function multiplicarMat3(a, b) {
+    const resultado = new Float32Array(9);
+
+    for (let columna = 0; columna < 3; columna++) {
+        for (let fila = 0; fila < 3; fila++) {
+
+            let suma = 0;
+
+            for (let k = 0; k < 3; k++) {
+                suma +=
+                    a[k * 3 + fila] *
+                    b[columna * 3 + k];
+            }
+
+            resultado[columna * 3 + fila] = suma;
+        }
+    }
+
+    return resultado;
+}
+
+// ------------------------------------------------------------
+// 9. Parámetros de transformación
+//    Cambie estos valores y observe el resultado.
+// ------------------------------------------------------------
+
+const tx = 0.30;
+const ty = 0.10;
+
+const anguloGrados = 35;
+const anguloRadianes = anguloGrados * Math.PI / 180;
+
+const sx = 1.20;
+const sy = 0.80;
+
+// ------------------------------------------------------------
+// 10. Construir la matriz de modelo
+//
+//     M = T * R * S
+//
+//     El objeto:
+//     1. se escala,
+//     2. luego rota,
+//     3. finalmente se traslada.
+// ------------------------------------------------------------
+
+const T = matrizTraslacion(tx, ty);
+const R = matrizRotacion(anguloRadianes);
+const S = matrizEscala(sx, sy);
+
+const RS = multiplicarMat3(R, S);
+const modelMatrix = multiplicarMat3(T, RS);
+
+// ------------------------------------------------------------
+// 11. Enviar la matriz al Vertex Shader
 // ------------------------------------------------------------
 
 gl.useProgram(program);
+
+const modelMatrixLocation =
+    gl.getUniformLocation(program, "uModelMatrix");
+
+gl.uniformMatrix3fv(
+    modelMatrixLocation,
+    false,
+    modelMatrix
+);
+
+// ------------------------------------------------------------
+// 12. Renderizar
+// ------------------------------------------------------------
+
+gl.clear(gl.COLOR_BUFFER_BIT);
+
 gl.bindVertexArray(vao);
 
 gl.drawArrays(
